@@ -6,7 +6,7 @@ PhyloVelo is a computational framework to quantify the transcriptomic velocity f
 ```
 git clone https://github.com/kunwang34/PhyloVelo
 cd ./PhyloVelo
-git install .
+pip install .
 ```
 
 ## Docs
