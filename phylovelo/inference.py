@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import factorial, gamma
-from scipy.stats import chi2, mannwhitneyu, nbinom, norm, spearmanr
+from scipy.stats import chi2, mannwhitneyu, nbinom, norm, spearmanr, pearsonr
 from tqdm.autonotebook import tqdm
-
+from statsmodels.stats.multitest import fdrcorrection
 
 def mle_zinb(data:list):
     '''
@@ -22,10 +22,12 @@ def mle_zinb(data:list):
     data = np.array(data)
 
     def lh(theta, data):
+
         psi, mu, n = theta
         p = n / (mu + n + 1e-9)
         n_zeros = np.sum(data == 0)
         non_zeros = data[data != 0]
+        np.seterr(all="ignore")
         pmf0 = -n_zeros * np.log((1 - psi) + psi * (n / (n + mu)) ** n)
         pmf1 = -sum(nbinom(n, p).logpmf(non_zeros)) - len(non_zeros) * np.log(
             psi + 1e-9
@@ -95,10 +97,12 @@ def mle_zinorm(data):
     data = np.array(data)
 
     def lh(theta, data):
+        np.seterr(all="ignore")
         psi, mu, sigma2 = theta
         n_zeros = np.sum(data == 0)
         non_zeros = data[data != 0]
         psi, mu, sigma2 = theta
+        np.seterr(all="ignore")
         pmf0 = -n_zeros * np.log(
             (1 - psi) + psi * (np.exp(mu**2) / (np.sqrt(2 * np.pi * sigma2)))
         )
@@ -268,7 +272,7 @@ def is_meg(x, y, trend=0):
 
 
 def velocity_inference(
-    sd:'scData', time:list, cutoff:float=0.95, p_val:float=0.05, target:str="x_normed", exact:bool=False
+    sd:'scData', time:list=None, cutoff:float=0.95, alpha:float=0.05, target:str="x_normed", exact:bool=False
 ):
     '''
     Inference phylogenetic velocity
@@ -277,11 +281,11 @@ def velocity_inference(
         sd:
             scData
         time:
-            cell generation
+            if None, cell generation will be automatically calculated from phylo tree 
         cutoff:
             Only calculate genes with top 'cutoff' correlation
-        p_val:
-            p-value of correlation
+        alpha:
+            Significance level
         target:
             which data to inference, 'count' for nb model or 'x_normed' for normal model
         exact:
@@ -299,18 +303,27 @@ def velocity_inference(
         model = "norm"
     else:
         model = "nb"
+        
+    if time is None:
+        tree = sd.phylo_tree
+        depths = tree.depths()
+        terminals = tree.get_terminals()
+        time = np.round([depths[i] for in terminals])
+        
+        
     for gene in data.columns:
         coef, pv = spearmanr(data[gene], time)
         coefs.append(coef)
         pvals.append(pv)
     coefs = np.array(coefs)
     pvals = np.array(pvals)
+
     cutoff = np.quantile(np.abs(coefs), cutoff)
-    target_genes = []
+    meg_candidates = []
     velos = dict()
-
+    pearsonr_pvals = []
+    
     zs_lat = pd.DataFrame()
-
     with tqdm(total=data.shape[1]) as pbar:
         for ind, gene in enumerate(data.columns):
             pbar.update(1)
@@ -319,8 +332,8 @@ def velocity_inference(
                 y = np.array(data[gene])
                 if not is_meg(x, y, trend=coefs[ind]):
                     continue
-            if abs(coefs[ind]) > cutoff and pvals[ind] < p_val:
-                target_genes.append(gene)
+            if abs(coefs[ind]) > cutoff and pvals[ind] < alpha:
+                meg_candidates.append(gene)
                 x = np.array(time)
                 y = np.array(latenct_z_inference(data[gene], time, model))
                 z_lat = pd.DataFrame(data=y, index=data.index, columns=[gene])
@@ -328,17 +341,35 @@ def velocity_inference(
                     zs_lat = z_lat
                 else:
                     zs_lat = pd.concat((zs_lat, z_lat), join="inner", axis=1)
-
                 if target == "count":
+                    np.seterr(all="ignore")
                     y = np.log(y + 1)
+                filterna = ~np.isnan(y)
+                x, y = x[filterna], y[filterna]
+                pearsonr_pvals.append(pearsonr(x, y)[1])
                 x_avg, y_avg = np.mean(x), np.mean(y)
                 s2 = sum(x**2) / len(x)
                 rho = sum(x * y) / len(x)
                 slope = (rho - x_avg * y_avg) / (s2 - x_avg**2)
                 velos[gene] = slope
-
-    sd.latent_z = zs_lat
-    sd.clock_genes = list(velos.keys())
+                
+        megs = []     
+        pearsonr_qvals = fdrcorrection(pearsonr_pvals)[1]
+        for ind, gene in enumerate(meg_candidates):
+            if pearsonr_qvals[ind] > alpha:
+                velos.pop(gene)
+            else:
+                megs.append(gene)
+            
+            
+    pearsonr_pvals, pearsonr_qvals = np.array(pearsonr_pvals), np.array(pearsonr_qvals)
+    pearsonr_pvals = pearsonr_pvals[pearsonr_qvals<=alpha]
+    pearsonr_qvals = pearsonr_qvals[pearsonr_qvals<=alpha]
+    
+    sd.latent_z = zs_lat[megs]
+    sd.megs = megs
+    sd.pvals = pd.DataFrame(pearsonr_pvals, index=megs).T
+    sd.qvals = pd.DataFrame(pearsonr_qvals, index=megs).T
 
     vels = []
     for gene in data.columns:
@@ -353,7 +384,7 @@ def velocity_inference(
     vels = np.clip(
         vels, np.quantile(vels[vels != 0], 0.05), np.quantile(vels[vels != 0], 0.95)
     )
-    vels[~np.isin(data.columns, sd.clock_genes)] = 0
+    vels[~np.isin(data.columns, sd.megs)] = 0
     sd.velocity = vels
 
     return sd

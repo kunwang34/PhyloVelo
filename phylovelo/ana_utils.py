@@ -11,7 +11,6 @@ from Bio import Phylo
 from scipy.stats import chi2, nbinom, pearsonr
 from sklearn.neighbors import NearestNeighbors
 
-
 '''
 def highly_variable_genes(data: "pd.DataFrame", n_top_genes:int=2000):
     """
@@ -81,6 +80,7 @@ def get_common_ancestor(trans_mat, targets):
         targets.append(get_common_ancestor2(trans_mat, target1, target2))
     return targets[0]
 '''
+
 
 def loadtree(file):
     '''

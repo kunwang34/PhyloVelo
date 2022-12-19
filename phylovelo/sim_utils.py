@@ -149,13 +149,14 @@ def sim_base_expr(
     ge.generate_genes(mu0_loc, mu0_scale, drift_loc, drift_scale)
     for cell in tree.get_terminals():
         cellstate = int(cell_states.loc[cell.name])
-        base_expr[cell.name] = ge.expr(
+        tmp = ge.expr(
             cellstate,
             int(terminals_depths[cell])
             - t0
             - start_time[cellstate]
             + pseudo_start_time[cellstate],
         )
+        base_expr = pd.concat((base_expr,pd.DataFrame(tmp,columns=[cell.name])), axis=1)
     base_expr = base_expr.T
     return ge, base_expr
 

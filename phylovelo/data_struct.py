@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from scipy.sparse import issparse
 
 from .ana_utils import *
 
@@ -21,10 +22,11 @@ class scData:
         cell_states: Cell types
         cell_names: Same to count's index
         cell_generation: Generation time of cells
-        clock_genes: MEGs
+        megs: MEGs
         velocity: PhyloVelo velocity
         velocity_embeded: PhyloVelo velocity project into embedding
         phylo_pseudotime: Pseudotime inferenced by PhyloVelo
+
     '''
     def __init__(
         self,
@@ -36,10 +38,12 @@ class scData:
         cell_states: list = None,
         cell_names: list = None,
         cell_generation: list = None,
-        clock_genes: list = None,
+        megs: list = None,
         velocity: list = None,
         velocity_embeded: list = None,
         phylo_pseudotime: list = None,
+        pvals: list = None,
+        qvals: list = None
     ):
         self.count = count
         self.x_normed = x_normed
@@ -49,10 +53,12 @@ class scData:
         self.phylo_tree = phylo_tree
         self.cell_states = cell_states
         self.cell_generation = cell_generation
-        self.clock_genes = clock_genes
+        self.megs = megs
         self.velocity = velocity
         self.velocity_embeded = velocity_embeded
         self.phylo_pseudotime = phylo_pseudotime
+        self.pvals = pvals
+        self.qvals = qvals
 
     def drop_duplicate_genes(self, target="count"):
         '''
