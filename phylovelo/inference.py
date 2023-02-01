@@ -308,7 +308,7 @@ def velocity_inference(
         tree = sd.phylo_tree
         depths = tree.depths()
         terminals = tree.get_terminals()
-        time = np.round([depths[i] for in terminals])
+        time = np.round([depths[i] for i in terminals])
         
         
     for gene in data.columns:
@@ -335,7 +335,8 @@ def velocity_inference(
             if abs(coefs[ind]) > cutoff and pvals[ind] < alpha:
                 meg_candidates.append(gene)
                 x = np.array(time)
-                y = np.array(latenct_z_inference(data[gene], time, model))
+                y = data[gene]
+                z = np.array(latenct_z_inference(y, time, model))
                 z_lat = pd.DataFrame(data=y, index=data.index, columns=[gene])
                 if not zs_lat.shape[0]:
                     zs_lat = z_lat
@@ -347,10 +348,10 @@ def velocity_inference(
                 filterna = ~np.isnan(y)
                 x, y = x[filterna], y[filterna]
                 pearsonr_pvals.append(pearsonr(x, y)[1])
-                x_avg, y_avg = np.mean(x), np.mean(y)
+                x_avg, z_avg = np.mean(x), np.mean(z)
                 s2 = sum(x**2) / len(x)
-                rho = sum(x * y) / len(x)
-                slope = (rho - x_avg * y_avg) / (s2 - x_avg**2)
+                rho = sum(x * z) / len(x)
+                slope = (rho - x_avg * z_avg) / (s2 - x_avg**2)
                 velos[gene] = slope
                 
         megs = []     

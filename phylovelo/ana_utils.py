@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from Bio import Phylo
-from scipy.stats import chi2, nbinom, pearsonr
+from scipy.stats import chi2, nbinom, pearsonr, spearmanr
 from sklearn.neighbors import NearestNeighbors
 
 '''
@@ -435,7 +435,7 @@ def mullerplot(data:'numpy.ndarray', label:list, color:list, absolute:bool=0, al
     Args:
         data: 
             Population size array. rows for cell type, columns for time point
-        latel: 
+        label: 
             Cell type names
         color: 
             Colors list
@@ -494,3 +494,80 @@ def mullerplot(data:'numpy.ndarray', label:list, color:list, absolute:bool=0, al
     # ax.legend(bbox_to_anchor=(1, 0), loc=3, borderaxespad = 0)
     return ax
 
+def label_name(loc, cell_types, ax, fontsize=12, font='DejaVu Sans'):
+    '''
+    Label cell type names on figures.
+    
+    Args:
+        loc: 
+            x, y locations in embedding
+        cell_types: 
+            Cell type names
+        ax: 
+            axes to label cell type name
+        fontsize: 
+            fontsize
+        font: 
+            font
+
+    Return:
+        matplotlib.axes
+    '''
+    loc = np.array(loc)
+    cell_types = np.array(cell_types)
+    for i in set(cell_types):
+        loci = loc[cell_types==i].mean(0)
+        ax.text(*loci, i, fontsize=fontsize, font=font,c='black', ha='center', va='center',
+                path_effects=[pe.withStroke(linewidth=2, foreground="white")])
+    return ax
+
+def corr_plot(x, y, ax, stats='pearson', r0_x=None, r0_y=None, r1_x=None, r1_y=None, fontsize=10):
+    '''
+    Draw a scatter plot of the two sets of data and show their correlation coefficients
+    
+    Args:
+        x: 
+            data1
+        y: 
+            data2
+        ax: 
+            axes to draw scatter on
+        stats: 
+            pearson or spearman
+        r0_x, r0_y, r1_x, r1_y: 
+            locations to label the correlation coefficient and the p-value
+        fontsize:
+            fontsize
+    Return:
+        matplotlib.axes
+    '''
+    stats = stats.lower()
+    if r0_x is None:
+        r0_x = min(x)
+    if r0_y is None:
+        r0_y = max(y)
+    if r1_x is None:
+        r1_x = min(x)
+    if r1_y is None:
+        r1_y = max(y)-(max(y)-min(y))*0.1
+        
+    a, b = np.polyfit(x, y, deg=1)
+    y_est = a * np.linspace(min(x),max(x),60) + b
+
+    ax.scatter(x, y, alpha=0.4, s=70)
+    ax.plot(np.linspace(min(x),max(x),60), y_est, '-', c='k')
+    if stats == 'pearson':
+        r, pval = pearsonr(x, y)
+    else:
+        r, pval = spearmanr(x, y)
+    ax.text(r0_x, r0_y, r"{} $r$={:.2g}".format(stats.capitalize(), r), fontsize=fontsize)
+    if pval == 0:
+        ax.text(r1_x, r1_y, r'$P<10^{-100}$', fontsize=fontsize)
+    else:
+        try:
+            ax.text(r1_x, r1_y, r'$P={}\times 10^{}$'.format(*r'{:.2e}'.format(pval).split('e')).replace('^', '^{').replace('$', '}$')[1:], fontsize=fontsize)
+        except:
+            ax.text(r1_x, r1_y, r'$P={:.4g}$'.format(pval), fontsize=fontsize)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    return ax
