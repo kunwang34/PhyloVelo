@@ -11,3 +11,6 @@ pip install .
 
 ## Docs
 [PhyloVelo Docs](https://phylovelo.readthedocs.io)
+
+## Note
+PhyloVelo is still under development, some API names and call methods in notebooks may have changed, and the model performance may also be slightly different.
