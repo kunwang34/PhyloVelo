@@ -32,6 +32,7 @@ PhyloVelo - Phylogeny-based transcriptomic velocity of single cells
    notebook/Simulation_Linear
    notebook/C.elegans_demo
    notebook/KPTracer-3726-t1
+   notebook/clone_based_phylovelo
 
 .. toctree::
    :caption: Model Comparsion
