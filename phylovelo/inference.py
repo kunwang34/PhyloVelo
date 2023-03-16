@@ -272,7 +272,7 @@ def is_meg(x, y, trend=0):
 
 
 def velocity_inference(
-    sd:'scData', time:list=None, cutoff:float=0.95, alpha:float=0.05, target:str="x_normed", exact:bool=False
+    sd:'scData', time:list=None, cutoff:float=0.97, alpha:float=0.05, target:str="x_normed", exact:bool=False
 ):
     '''
     Inference phylogenetic velocity
@@ -337,7 +337,7 @@ def velocity_inference(
                 x = np.array(time)
                 y = data[gene]
                 z = np.array(latenct_z_inference(y, time, model))
-                z_lat = pd.DataFrame(data=y, index=data.index, columns=[gene])
+                z_lat = pd.DataFrame(data=z, index=data.index, columns=[gene])
                 if not zs_lat.shape[0]:
                     zs_lat = z_lat
                 else:

@@ -10,6 +10,8 @@ import pandas as pd
 from Bio import Phylo
 from scipy.stats import chi2, nbinom, pearsonr, spearmanr
 from sklearn.neighbors import NearestNeighbors
+from matplotlib import font_manager
+import matplotlib.patheffects as pe
 
 '''
 def highly_variable_genes(data: "pd.DataFrame", n_top_genes:int=2000):
@@ -558,9 +560,10 @@ def corr_plot(x, y, ax, stats='pearson', r0_x=None, r0_y=None, r1_x=None, r1_y=N
     ax.plot(np.linspace(min(x),max(x),60), y_est, '-', c='k')
     if stats == 'pearson':
         r, pval = pearsonr(x, y)
+        ax.text(r0_x, r0_y, r"Pearson's $r={:.2g}$".format(r), fontsize=fontsize)
     else:
         r, pval = spearmanr(x, y)
-    ax.text(r0_x, r0_y, r"{} $r$={:.2g}".format(stats.capitalize(), r), fontsize=fontsize)
+        ax.text(r0_x, r0_y, r"Spearman's $\rho={:.2g}$".format(r), fontsize=fontsize)
     if pval == 0:
         ax.text(r1_x, r1_y, r'$P<10^{-100}$', fontsize=fontsize)
     else:
