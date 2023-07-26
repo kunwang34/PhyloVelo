@@ -13,9 +13,9 @@ pip install .
 [PhyloVelo Docs](https://phylovelo.readthedocs.io)
 
 ## References
-Kun Wang, Liangzhen Hou, Xin Wang, Xiangwei Zhai, Zhaolian Lu, Zhike Zi, Weiwei Zhai, Xionglei He, Christina Curtis, Da Zhou\*, Zheng Hu\*. PhyloVelo for robust mapping of single-cell velocity fields using monotonically expressed genes. hyperlink/doi (2023).(to be updated)
+Kun Wang, Liangzhen Hou, Xin Wang, Xiangwei Zhai, Zhaolian Lu, Zhike Zi, Weiwei Zhai, Xionglei He, Christina Curtis, Da Zhou\*, Zheng Hu\*. PhyloVelo enhances transcriptomic velocity field mapping using monotonically expressed genes. Nature Biotechnology. https://www.nature.com/articles/s41587-023-01887-5 (2023.07).
 
-Bergen, V., Lange, M., Peidli, S., Wolf, F.A. & Theis, F.J. Generalizing RNA velocity to transient cell states through dynamical modeling. Nat Biotechnol. https://doi.org/10.1038/s41587-020-0591-3
+Bergen, V., Lange, M., Peidli, S., Wolf, F.A. & Theis, F.J. Generalizing RNA velocity to transient cell states through dynamical modeling. Nature Biotechnology. https://doi.org/10.1038/s41587-020-0591-3
 
 Gao, M., Qiao, C. & Huang, Y. UniTVelo: temporally unified RNA velocity reinforces single-cell trajectory inference. Nat Commun. https://doi.org/10.1038/s41467-022-34188-7
 
