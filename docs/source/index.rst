@@ -9,7 +9,7 @@ PhyloVelo - Phylogeny-based transcriptomic velocity of single cells
 **PhyloVelo** is a computational framework to quantify the transcriptomic velocity field from phylogeny-resolved scRNA-seq data. PhyloVelo utilizes monotonically expressed genes (MEGs) along cell divisions as a transcriptomic clock to reconstruct the velocity vector fields of cell-state transitions, which enables robust and systematic cell-fate mapping in diverse biological contexts.
 
 
-.. image:: ./stream.jpg
+.. image:: ./diagram_no_text.svg
    :width: 1000px
    :align: center
 
