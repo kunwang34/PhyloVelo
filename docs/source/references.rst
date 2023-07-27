@@ -2,6 +2,6 @@ References
 ==========
 
 .. [Wang22] Wang *et al.* (2022),
-   *Cell division history encodes directional information of fate transitions*,
-   `bioRxiv <https://www.biorxiv.org/content/10.1101/2022.10.06.511094v2>`__.
+   *PhyloVelo enhances transcriptomic velocity field mapping using monotonically expressed genes. Nature Biotechnology*,
+   `Nature Biotechnology <https://www.nature.com/articles/s41587-023-01887-5>`__.
 
