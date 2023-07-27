@@ -3498,7 +3498,7 @@
 	.st3038{fill:#040000;}
 	.st3039{font-family:'ArialMT';}
 	.st3040{font-size:10px;}
-	.st3041{fill:none;stroke:#070102;stroke-width:0.0627;stroke-linecap:round;stroke-miterlimit:1.3832;}
+	.st3041{fill:none;stroke:#070102;stroke-width:0.2;stroke-linecap:round;stroke-miterlimit:1.3832;}
 	.st3042{fill:#80BBB1;}
 	.st3043{fill:#B5AFCC;}
 	.st3044{fill:#799EBB;}
