@@ -3,14 +3,12 @@ Enrichr/
 test/
 megs/
 figures/
-
 tasksub.py
 test.*
 cache
 tmp.*
 dca*
 *dca
-*.loom
 *.pkl
 
 # Byte-compiled / optimized / DLL files
