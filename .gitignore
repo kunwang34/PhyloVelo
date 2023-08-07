@@ -3,7 +3,7 @@ Enrichr/
 test/
 megs/
 figures/
-datasets/
+
 tasksub.py
 test.*
 cache
