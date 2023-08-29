@@ -33,7 +33,6 @@ PhyloVelo - Phylogeny-based transcriptomic velocity of single cells
    notebook/C.elegans_demo
    notebook/KPTracer-3726-t1
    notebook/in_vitro_hematopoiesis
-   notebook/clone_based_phylovelo
    notebook/cd8+Tcells-Copy1
 
 .. toctree::
