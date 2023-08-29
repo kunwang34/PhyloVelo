@@ -103,7 +103,6 @@ class scData:
 
         if is_normalize:
             counts_per_cell = self.count.sum(axis=1)
-            counts = np.array(self.count)
             target_sum = (
                 np.median(counts_per_cell[counts_per_cell > 0], axis=0)
                 if target_sum is None
@@ -111,7 +110,7 @@ class scData:
             )
             counts_per_cell += counts_per_cell == 0
             counts_per_cell = counts_per_cell / target_sum
-            self.x_normed = np.divide(self.count, counts_per_cell[:, None])
+            self.x_normed = np.divide(self.count, counts_per_cell.to_numpy().reshape(-1,1))
 
         if is_log:
             if self.x_normed is None:
