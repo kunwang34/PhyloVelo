@@ -12,18 +12,18 @@ pip install .
 ## Docs
 [PhyloVelo Docs](https://phylovelo.readthedocs.io)
 
+
+## Data
+
+- **Mouse embryo erythroid**
+  
+  https://drive.google.com/file/d/1_2SrtJmNILaaKTIoM4VwePOm0_RayrcF/view?usp=drive_link
+- **KP 3726**
+  
+  https://drive.google.com/file/d/1NsgvD3xylUuZm4CEv5gEeYAciTgFUkov/view?usp=drive_link
+
 ## References
 Kun Wang, Liangzhen Hou, Xin Wang, Xiangwei Zhai, Zhaolian Lu, Zhike Zi, Weiwei Zhai, Xionglei He, Christina Curtis, Da Zhou\*, Zheng Hu\*. PhyloVelo enhances transcriptomic velocity field mapping using monotonically expressed genes. Nature Biotechnology. https://www.nature.com/articles/s41587-023-01887-5 (2023.07).
-
-Bergen, V., Lange, M., Peidli, S., Wolf, F.A. & Theis, F.J. Generalizing RNA velocity to transient cell states through dynamical modeling. Nature Biotechnology. https://doi.org/10.1038/s41587-020-0591-3
-
-Gao, M., Qiao, C. & Huang, Y. UniTVelo: temporally unified RNA velocity reinforces single-cell trajectory inference. Nat Commun. https://doi.org/10.1038/s41467-022-34188-7
-
-Shengyu Li, Pengzhi Zhang, Weiqing Chen, Lingqun Ye, Kristopher W. Brannan, Nhat-Tu Le, Jun-ichi Abe, John P. Cooke, Guangyu Wang. A relay velocity model infers cell-dependent RNA velocity. Nature Biotechnology. https://doi.org/10.1038/s41587-023-01728-5
-
-Haotian Cui, Hassaan Maan, Michael D. Taylor, Bo Wang. DeepVelo - A Deep Learning-based velocity estimation tool with cell-specific kinetic rates. GitHub. https://github.com/bowang-lab/DeepVelo
-
-Yichen Gu, David Blaauw,  Joshua D. Welch. VeloVAE - Variational Mixtures of ODEs for Inferring Cellular Gene Expression Dynamics. GitHub. https://github.com/welch-lab/VeloVAE
 
 ## Note
 PhyloVelo is still under development, some API names and call methods in notebooks may have changed, and the model performance may also be slightly different.
