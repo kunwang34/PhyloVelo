@@ -1,3 +1,5 @@
+from heapq import heappop, heappush
+
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 from tqdm.autonotebook import tqdm
@@ -29,6 +31,46 @@ def get_nearest_neighbor(data:'numpy.ndarray', target:int, n_neighbors:int=10):
     return distance[0], loc[0]
 
 
+def _as_float_array(x):
+    return np.asarray(x, dtype=np.float64)
+
+
+def _normalize_01(x, robust_quantiles=None):
+    x = _as_float_array(x).copy()
+    finite = np.isfinite(x)
+    if not finite.any():
+        return np.zeros_like(x, dtype=np.float64)
+
+    if robust_quantiles is not None:
+        lo_q, hi_q = robust_quantiles
+        lo, hi = np.nanquantile(x[finite], [lo_q, hi_q])
+        x = np.clip(x, lo, hi)
+
+    finite = np.isfinite(x)
+    lo, hi = np.nanmin(x[finite]), np.nanmax(x[finite])
+    if hi <= lo:
+        out = np.zeros_like(x, dtype=np.float64)
+    else:
+        out = (x - lo) / (hi - lo)
+    out[~np.isfinite(out)] = np.nanmedian(out[np.isfinite(out)]) if np.isfinite(out).any() else 0
+    return out
+
+
+def _time_intervals(pt1, pt2, v1, v2):
+    pt1 = _as_float_array(pt1)
+    pt2 = _as_float_array(pt2)
+    v1 = _as_float_array(v1)
+    v2 = _as_float_array(v2)
+
+    diff = pt2 - pt1
+    va = (v1 + v2) / 2
+    distance = np.sqrt((diff**2).sum(axis=-1))
+    v_proj = (diff * va).sum(axis=-1) / (distance + 1e-12)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        interval = distance / (v_proj + 1e-9)
+    return np.where(np.isfinite(interval), interval, 1e99)
+
+
 def time_interval(pt1:'numpy.ndarry', pt2:'numpy.ndarry', v1:'numpy.ndarry', v2:'numpy.ndarry'):
     '''
     Given two points' coordinate and velocity, calculate the time interval
@@ -47,15 +89,149 @@ def time_interval(pt1:'numpy.ndarry', pt2:'numpy.ndarry', v1:'numpy.ndarry', v2:
         float:
             Time interval
     '''
-    va = (v1 + v2) / 2
-    a1 = pt2 - pt1
-    with np.errstate(all="ignore"):
-        cos = (a1 * va).sum() / np.sqrt((a1**2).sum()) / np.sqrt((va**2).sum())
-    v_proj = np.sqrt((va**2).sum()) * cos
-    pt = np.sqrt((a1**2).sum()) / (v_proj + 1e-9)
-    if np.isnan(pt):
-        return 1e99
-    return pt
+    return float(_time_intervals(pt1, pt2, v1, v2))
+
+
+def _build_knn_adjacency(pts, v, n_neighbors=30):
+    n_cells = pts.shape[0]
+    adjacency = [[] for _ in range(n_cells)]
+    if n_cells <= 1:
+        return adjacency
+
+    n_neighbors = min(max(2, int(n_neighbors)), n_cells)
+    neigh = NearestNeighbors(n_neighbors=n_neighbors)
+    neigh.fit(pts)
+    _, indices = neigh.kneighbors(pts)
+
+    rows = np.repeat(np.arange(n_cells), n_neighbors)
+    cols = indices.reshape(-1)
+    keep = rows != cols
+    rows, cols = rows[keep], cols[keep]
+    intervals = _time_intervals(pts[rows], pts[cols], v[rows], v[cols])
+
+    for i, j, interval in zip(rows, cols, intervals):
+        weight = abs(interval)
+        adjacency[i].append((j, weight, interval))
+        adjacency[j].append((i, weight, -interval))
+
+    return adjacency
+
+
+def _connected_components(adjacency):
+    n_cells = len(adjacency)
+    visited = np.zeros(n_cells, dtype=bool)
+    components = []
+
+    for start in range(n_cells):
+        if visited[start]:
+            continue
+        stack = [start]
+        visited[start] = True
+        component = []
+        while stack:
+            node = stack.pop()
+            component.append(node)
+            for neighbor, _, _ in adjacency[node]:
+                if not visited[neighbor]:
+                    visited[neighbor] = True
+                    stack.append(neighbor)
+        components.append(np.array(component, dtype=int))
+
+    return components
+
+
+def _bridge_components(adjacency, pts, v, root=0):
+    components = _connected_components(adjacency)
+    if len(components) <= 1:
+        return adjacency
+
+    root_component = next(i for i, component in enumerate(components) if root in component)
+    ordered = [components[root_component]] + [
+        component for i, component in enumerate(components) if i != root_component
+    ]
+    connected = ordered[0].copy()
+
+    for component in ordered[1:]:
+        neigh = NearestNeighbors(n_neighbors=1)
+        neigh.fit(pts[connected])
+        distances, nearest = neigh.kneighbors(pts[component])
+        local = int(np.argmin(distances[:, 0]))
+        src = int(connected[nearest[local, 0]])
+        dst = int(component[local])
+        interval = time_interval(pts[src], pts[dst], v[src], v[dst])
+        weight = abs(interval)
+        adjacency[src].append((dst, weight, interval))
+        adjacency[dst].append((src, weight, -interval))
+        connected = np.concatenate((connected, component))
+
+    return adjacency
+
+
+def _prim_edges(adjacency, root=0):
+    n_cells = len(adjacency)
+    if n_cells <= 1:
+        return []
+
+    visited = np.zeros(n_cells, dtype=bool)
+    visited[root] = True
+    visited_count = 1
+    heap = []
+    path = []
+
+    for neighbor, weight, interval in adjacency[root]:
+        heappush(heap, (weight, root, neighbor, interval))
+
+    with tqdm(total=n_cells - 1) as pbar:
+        while visited_count < n_cells:
+            if not heap:
+                unvisited = np.flatnonzero(~visited)
+                if len(unvisited) == 0:
+                    break
+                next_root = int(unvisited[0])
+                visited[next_root] = True
+                visited_count += 1
+                pbar.update(1)
+                for neighbor, weight, interval in adjacency[next_root]:
+                    heappush(heap, (weight, next_root, neighbor, interval))
+                continue
+
+            _, src, dst, interval = heappop(heap)
+            if visited[dst]:
+                continue
+
+            visited[dst] = True
+            visited_count += 1
+            path.append((src, dst, interval))
+            pbar.update(1)
+
+            for neighbor, weight, next_interval in adjacency[dst]:
+                if not visited[neighbor]:
+                    heappush(heap, (weight, dst, neighbor, next_interval))
+
+    return path
+
+
+def _graph_pseudotime(pts, v, n_neighbors=30, root=0, robust_quantiles=(0.01, 0.99)):
+    if pts.shape[0] == 0:
+        return np.array([])
+    if pts.shape[0] == 1:
+        return np.zeros(1)
+
+    adjacency = _build_knn_adjacency(pts, v, n_neighbors=n_neighbors)
+    adjacency = _bridge_components(adjacency, pts, v, root=root)
+    path = _prim_edges(adjacency, root=root)
+
+    pseudo_time = np.full(pts.shape[0], np.nan)
+    pseudo_time[root] = 0
+    for src, dst, interval in path:
+        if np.isfinite(pseudo_time[src]):
+            pseudo_time[dst] = pseudo_time[src] + interval
+
+    missing = ~np.isfinite(pseudo_time)
+    if missing.any():
+        pseudo_time[missing] = np.nanmedian(pseudo_time[~missing]) if (~missing).any() else 0
+
+    return _normalize_01(-pseudo_time, robust_quantiles=robust_quantiles)
 
 
 def graph_dict(pts:'numpy.ndarry', v:'numpy.ndarry', n_neighbors:int=30):
@@ -74,13 +250,13 @@ def graph_dict(pts:'numpy.ndarry', v:'numpy.ndarry', n_neighbors:int=30):
         dict:
             Graph to build MSt
     '''
-    graph_dict = {}
-    for i in range(pts.shape[0]):
-        graph_dict[i] = {}
-        dis, nbrs = get_nearest_neighbor(pts, i, n_neighbors)
-        for d, nbr in zip(dis, nbrs):
-            graph_dict[i][nbr] = abs(time_interval(pts[i], pts[nbr], v[i], v[nbr]))
-    return graph_dict
+    pts = _as_float_array(pts)
+    v = _as_float_array(v)
+    adjacency = _build_knn_adjacency(pts, v, n_neighbors=n_neighbors)
+    return {
+        i: {neighbor: weight for neighbor, weight, _ in neighbors}
+        for i, neighbors in enumerate(adjacency)
+    }
 
 
 def prim(graph, root):
@@ -88,30 +264,37 @@ def prim(graph, root):
     Prim algorithm to build MST from graph
     '''
     assert type(graph) == dict
-    nodes = set(graph.keys())
-    nodes.remove(root)
-    visited = [root]
-    path = []
-    next = None
-    with tqdm(total=len(nodes)) as pbar:
-        while nodes:
-            distance = float("inf")
-            for s in visited:
-                for d in graph[s]:
-                    if d in visited or s == d:
-                        continue
-                    if graph[s][d] < distance:
-                        distance = graph[s][d]
-                        pre = s
-                        next = d
-            path.append((pre, next))
-            visited.append(next)
-            nodes.remove(next)
-            pbar.update(1)
-    return path
+    adjacency = [[] for _ in range(len(graph))]
+    for src, neighbors in graph.items():
+        for dst, weight in neighbors.items():
+            adjacency[src].append((dst, weight, weight))
+    return [(src, dst) for src, dst, _ in _prim_edges(adjacency, root)]
 
 
-def calc_phylo_pseudotime(sd:'scData', n_neighbors:int=30, r_sample:float=1):
+def _sample_cells(index, r_sample, random_state=None):
+    n_cells = len(index)
+    if r_sample >= 1:
+        return np.asarray(index)
+
+    n_sample = max(1, int(n_cells * r_sample))
+    rng = np.random.default_rng(random_state)
+    return rng.choice(np.asarray(index), n_sample, replace=False)
+
+
+def _positions_for_names(index, names):
+    index = np.asarray(index)
+    name_to_pos = {name: i for i, name in enumerate(index)}
+    return np.array([name_to_pos[name] for name in names], dtype=int)
+
+
+def calc_phylo_pseudotime(
+    sd:'scData',
+    n_neighbors:int=30,
+    r_sample:float=1,
+    method:str="graph",
+    target:str="x_normed",
+    random_state:int=None,
+):
     '''
     Calculate the phyloVelo pseudotime
     
@@ -122,55 +305,127 @@ def calc_phylo_pseudotime(sd:'scData', n_neighbors:int=30, r_sample:float=1):
             N nearest neighbors to build MST. The smaller the number, the faster the calculation, but there is a chance of error
         r_sample:
             [0-1], random sample a subset calculate pseudotime.
+        method:
+            'graph' uses embedding velocities and a kNN MST; 'meg' uses robust MEG expression.
+        target:
+            Expression matrix used when method='meg'.
+        random_state:
+            Seed for subsampling.
             
     Return:
         scData.phylo_pseudotime
     '''
-    if r_sample < 1:
-        n_cells = len(sd.Xdr.index)
-        n_sample = int(n_cells * r_sample)
-        sample_names = np.random.choice(sd.Xdr.index, n_sample, replace=False)
+    method = method.lower()
+    if method in ["meg", "expression", "expr"]:
+        return calc_meg_pseudotime(sd, target=target)
+    if method != "graph":
+        raise ValueError("method must be 'graph' or 'meg'.")
+
+    sample_names = _sample_cells(sd.Xdr.index, r_sample, random_state=random_state)
+    if len(sample_names) < len(sd.Xdr.index):
+        sample_pos = _positions_for_names(sd.Xdr.index, sample_names)
         pts = sd.Xdr.loc[sample_names].to_numpy()
-        v = sd.velocity_embeded[np.isin(sd.Xdr.index, sample_names), :]
+        v = sd.velocity_embeded[sample_pos, :]
     else:
-        sample_names = sd.Xdr.index
+        sample_names = np.asarray(sd.Xdr.index)
         pts = sd.Xdr.to_numpy()
         v = sd.velocity_embeded
 
-    with np.errstate(all="ignore"):
-        graph = graph_dict(pts, v, n_neighbors=n_neighbors)
-    path = prim(graph, 0)
-    pseudo_time = dict()
-    for i in range(pts.shape[0]):
-        pseudo_time[sample_names[i]] = 1e99
-        pseudo_time[sample_names[0]] = 1
-    for i in path:
-        pseudo_time[sample_names[i[1]]] = min(
-            pseudo_time[sample_names[i[0]]]
-            + time_interval(pts[i[0]], pts[i[1]], v[i[0]], v[i[1]]),
-            pseudo_time[sample_names[i[1]]],
-        )
+    pts = _as_float_array(pts)
+    v = _as_float_array(v)
+    sample_time = _graph_pseudotime(pts, v, n_neighbors=n_neighbors)
 
-    if len(path) < sd.Xdr.shape[0]:
-        pseudo_time_full = dict()
-        neigh = NearestNeighbors(n_neighbors=5)
+    if len(sample_names) < len(sd.Xdr.index):
+        n_fill_neighbors = min(5, len(sample_names))
+        neigh = NearestNeighbors(n_neighbors=n_fill_neighbors)
         neigh.fit(pts)
+        distances, neighbors = neigh.kneighbors(sd.Xdr.to_numpy())
+        weights = 1 / (distances + 1e-9)
+        time = (weights * sample_time[neighbors]).sum(axis=1) / weights.sum(axis=1)
+        time[sample_pos] = sample_time
+    else:
+        time = sample_time
 
-        for ind, name in enumerate(sd.Xdr.index):
-            if name in pseudo_time:
-                pseudo_time_full[name] = pseudo_time[name]
-            else:
-                # dis, neigh = get_nearest_neighbor(xdr, sd.Xdr.loc[name], n_neighbors=5)
-                neighbor = neigh.kneighbors([sd.Xdr.loc[name].to_numpy()])
-                neighbors = neighbor[1][0]
-                pseudo_time_full[name] = np.mean(
-                    [pseudo_time[sample_names[i]] for i in neighbors]
-                )
-        for ind, name in enumerate(sd.Xdr.index):
-            pseudo_time[ind] = pseudo_time_full[name]
+    sd.phylo_pseudotime = _normalize_01(time, robust_quantiles=(0.01, 0.99))
+    return sd
 
-    time = np.array([-pseudo_time[i] for i in range(sd.Xdr.shape[0])])
-    time = time - min(time)
-    time = time / max(time)
-    sd.phylo_pseudotime = time
+
+def calc_meg_pseudotime(
+    sd:'scData',
+    target:str="x_normed",
+    genes:list=None,
+    robust_quantiles:tuple=(0.05, 0.95),
+    aggregation:str="median",
+    min_genes:int=3,
+):
+    '''
+    Calculate pseudotime directly from robustly oriented MEG expression.
+
+    Args:
+        sd:
+            sc data
+        target:
+            Expression matrix to use, usually 'x_normed' or 'count'.
+        genes:
+            MEGs to use. Default uses sd.megs.
+        robust_quantiles:
+            Lower and upper quantiles used to clip per-gene expression.
+        aggregation:
+            'median' for robust L1 aggregation or 'weighted_mean'.
+        min_genes:
+            Minimum number of usable MEGs.
+
+    Return:
+        scData.phylo_pseudotime
+    '''
+    data = getattr(sd, target)
+    if genes is None:
+        genes = getattr(sd, "megs", None)
+    if genes is None or len(genes) == 0:
+        raise ValueError("No MEGs found. Run velocity_inference first or pass genes.")
+
+    columns = np.asarray(data.columns)
+    gene_to_col = {gene: i for i, gene in enumerate(columns)}
+    genes = [gene for gene in genes if gene in gene_to_col]
+    if len(genes) < min_genes:
+        raise ValueError("Not enough MEGs are available in the selected expression matrix.")
+
+    gene_idx = np.array([gene_to_col[gene] for gene in genes], dtype=int)
+    X = _as_float_array(data.iloc[:, gene_idx].to_numpy())
+
+    velocity = _as_float_array(getattr(sd, "velocity", np.ones(len(columns))))
+    signs = np.sign(velocity[gene_idx])
+    usable = signs != 0
+    if usable.sum() < min_genes:
+        raise ValueError("Not enough selected MEGs have non-zero velocity direction.")
+
+    X = X[:, usable]
+    signs = signs[usable]
+    weights = np.abs(velocity[gene_idx][usable])
+
+    lo, hi = np.nanquantile(X, robust_quantiles, axis=0)
+    spread = hi - lo
+    usable = np.isfinite(spread) & (spread > 1e-12)
+    if usable.sum() < min_genes:
+        raise ValueError("Not enough selected MEGs have usable expression variation.")
+
+    X = X[:, usable]
+    signs = signs[usable]
+    weights = weights[usable]
+    lo, hi, spread = lo[usable], hi[usable], spread[usable]
+
+    gene_time = np.clip((X - lo) / spread, 0, 1)
+    gene_time[:, signs < 0] = 1 - gene_time[:, signs < 0]
+
+    if aggregation == "weighted_mean":
+        if not np.isfinite(weights).any() or weights.sum() <= 0:
+            weights = np.ones_like(weights)
+        weights = weights / weights.sum()
+        time = np.nansum(gene_time * weights, axis=1)
+    elif aggregation == "median":
+        time = np.nanmedian(gene_time, axis=1)
+    else:
+        raise ValueError("aggregation must be 'median' or 'weighted_mean'.")
+
+    sd.phylo_pseudotime = _normalize_01(time, robust_quantiles=robust_quantiles)
     return sd

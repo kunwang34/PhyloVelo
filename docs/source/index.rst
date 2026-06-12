@@ -19,6 +19,7 @@ PhyloVelo - Phylogeny-based transcriptomic velocity of single cells
    :hidden:
    
    Installation
+   pseudotime
    references
    
    
