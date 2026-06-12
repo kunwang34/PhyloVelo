@@ -56,6 +56,16 @@ def _normalize_01(x, robust_quantiles=None):
     return out
 
 
+def _normalize_with_bounds(x, lo, hi):
+    x = _as_float_array(x).copy()
+    if hi <= lo:
+        out = np.zeros_like(x, dtype=np.float64)
+    else:
+        out = (np.clip(x, lo, hi) - lo) / (hi - lo)
+    out[~np.isfinite(out)] = np.nanmedian(out[np.isfinite(out)]) if np.isfinite(out).any() else 0
+    return out
+
+
 def _time_intervals(pt1, pt2, v1, v2):
     pt1 = _as_float_array(pt1)
     pt2 = _as_float_array(pt2)
@@ -287,6 +297,28 @@ def _positions_for_names(index, names):
     return np.array([name_to_pos[name] for name in names], dtype=int)
 
 
+def _get_expression_data(obj, target):
+    if obj is None:
+        return None
+    if hasattr(obj, "columns") and hasattr(obj, "iloc"):
+        return obj
+    return getattr(obj, target)
+
+
+def _meg_pseudotime_scores(X, lo, spread, signs, weights, aggregation):
+    gene_time = np.clip((X - lo) / spread, 0, 1)
+    gene_time[:, signs < 0] = 1 - gene_time[:, signs < 0]
+
+    if aggregation == "weighted_mean":
+        if not np.isfinite(weights).any() or weights.sum() <= 0:
+            weights = np.ones_like(weights)
+        weights = weights / weights.sum()
+        return np.nansum(gene_time * weights, axis=1)
+    if aggregation == "median":
+        return np.nanmedian(gene_time, axis=1)
+    raise ValueError("aggregation must be 'median' or 'weighted_mean'.")
+
+
 def calc_phylo_pseudotime(
     sd:'scData',
     n_neighbors:int=30,
@@ -357,6 +389,9 @@ def calc_meg_pseudotime(
     robust_quantiles:tuple=(0.05, 0.95),
     aggregation:str="median",
     min_genes:int=3,
+    query_data=None,
+    query_sd:'scData'=None,
+    query_target:str=None,
 ):
     '''
     Calculate pseudotime directly from robustly oriented MEG expression.
@@ -374,11 +409,27 @@ def calc_meg_pseudotime(
             'median' for robust L1 aggregation or 'weighted_mean'.
         min_genes:
             Minimum number of usable MEGs.
+        query_data:
+            Independent expression matrix (cells x genes) to score with the
+            reference dataset's MEGs, velocity directions, and robust scaling.
+        query_sd:
+            Independent scData object. Uses query_target or target as expression
+            matrix and writes query pseudotime to query_sd.phylo_pseudotime.
+        query_target:
+            Expression matrix name for query_sd. Default: same as target.
 
     Return:
-        scData.phylo_pseudotime
+        sd if no query is provided; query pseudotime array if query_data is
+        provided; query_sd if query_sd is provided.
     '''
     data = getattr(sd, target)
+    query_target = target if query_target is None else query_target
+    query_expr = _get_expression_data(query_sd, query_target)
+    if query_data is not None and query_expr is not None:
+        raise ValueError("Pass only one of query_data or query_sd.")
+    if query_data is not None:
+        query_expr = query_data
+
     if genes is None:
         genes = getattr(sd, "megs", None)
     if genes is None or len(genes) == 0:
@@ -386,9 +437,20 @@ def calc_meg_pseudotime(
 
     columns = np.asarray(data.columns)
     gene_to_col = {gene: i for i, gene in enumerate(columns)}
-    genes = [gene for gene in genes if gene in gene_to_col]
+    if query_expr is not None:
+        query_columns = np.asarray(query_expr.columns)
+        query_gene_to_col = {gene: i for i, gene in enumerate(query_columns)}
+        genes = [gene for gene in genes if gene in gene_to_col and gene in query_gene_to_col]
+    else:
+        query_gene_to_col = None
+        genes = [gene for gene in genes if gene in gene_to_col]
+
     if len(genes) < min_genes:
-        raise ValueError("Not enough MEGs are available in the selected expression matrix.")
+        if query_expr is None:
+            raise ValueError("Not enough MEGs are available in the reference expression matrix.")
+        raise ValueError(
+            "Not enough MEGs are shared by the reference and query expression matrices."
+        )
 
     gene_idx = np.array([gene_to_col[gene] for gene in genes], dtype=int)
     X = _as_float_array(data.iloc[:, gene_idx].to_numpy())
@@ -402,6 +464,7 @@ def calc_meg_pseudotime(
     X = X[:, usable]
     signs = signs[usable]
     weights = np.abs(velocity[gene_idx][usable])
+    genes = list(np.asarray(genes)[usable])
 
     lo, hi = np.nanquantile(X, robust_quantiles, axis=0)
     spread = hi - lo
@@ -413,19 +476,26 @@ def calc_meg_pseudotime(
     signs = signs[usable]
     weights = weights[usable]
     lo, hi, spread = lo[usable], hi[usable], spread[usable]
+    genes = list(np.asarray(genes)[usable])
 
-    gene_time = np.clip((X - lo) / spread, 0, 1)
-    gene_time[:, signs < 0] = 1 - gene_time[:, signs < 0]
-
-    if aggregation == "weighted_mean":
-        if not np.isfinite(weights).any() or weights.sum() <= 0:
-            weights = np.ones_like(weights)
-        weights = weights / weights.sum()
-        time = np.nansum(gene_time * weights, axis=1)
-    elif aggregation == "median":
-        time = np.nanmedian(gene_time, axis=1)
+    time_score = _meg_pseudotime_scores(X, lo, spread, signs, weights, aggregation)
+    finite = np.isfinite(time_score)
+    if finite.any():
+        score_lo, score_hi = np.nanquantile(time_score[finite], robust_quantiles)
     else:
-        raise ValueError("aggregation must be 'median' or 'weighted_mean'.")
+        score_lo, score_hi = 0, 1
+    sd.phylo_pseudotime = _normalize_with_bounds(time_score, score_lo, score_hi)
 
-    sd.phylo_pseudotime = _normalize_01(time, robust_quantiles=robust_quantiles)
-    return sd
+    if query_expr is None:
+        return sd
+
+    query_gene_idx = np.array([query_gene_to_col[gene] for gene in genes], dtype=int)
+    X_query = _as_float_array(query_expr.iloc[:, query_gene_idx].to_numpy())
+    query_score = _meg_pseudotime_scores(X_query, lo, spread, signs, weights, aggregation)
+    query_time = _normalize_with_bounds(query_score, score_lo, score_hi)
+
+    if query_sd is not None:
+        query_sd.phylo_pseudotime = query_time
+        return query_sd
+
+    return query_time

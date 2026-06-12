@@ -118,6 +118,21 @@ The same estimator can be selected through `calc_phylo_pseudotime`:
 pv.calc_phylo_pseudotime(sd, method="meg", target="x_normed")
 ```
 
+The MEG estimator can also transfer a reference clock to an independent dataset
+that only has transcriptome data. The reference `sd` supplies the MEGs, velocity
+directions, and robust scaling; the query matrix only needs matching gene names.
+
+```python
+query_pseudotime = pv.calc_meg_pseudotime(
+    sd,
+    target="x_normed",
+    query_data=query_x_normed,  # cells x genes DataFrame
+)
+```
+
+If the independent data are stored in another `scData` object, pass `query_sd`
+and PhyloVelo will write `query_sd.phylo_pseudotime`.
+
 ## Plotting
 
 ```python
