@@ -74,6 +74,34 @@ The same estimator can be selected through ``calc_phylo_pseudotime``:
 
    pv.calc_phylo_pseudotime(sd, method="meg", target="x_normed")
 
+The MEG expression method can also transfer a pseudotime clock from a reference
+dataset to an independent dataset that only has transcriptome data. In this mode,
+the reference ``sd`` provides the MEGs, velocity directions, per-gene robust
+scaling, and final score calibration. The query dataset only needs an expression
+matrix with matching gene names.
+
+.. code-block:: python
+
+   query_pseudotime = pv.calc_meg_pseudotime(
+       sd,
+       target="x_normed",
+       query_data=query_x_normed,  # cells x genes DataFrame
+   )
+
+If the independent data are stored in another ``scData`` object, pass
+``query_sd``. PhyloVelo will use ``query_target`` or, by default, the same
+``target`` as the reference dataset.
+
+.. code-block:: python
+
+   pv.calc_meg_pseudotime(
+       sd,
+       target="x_normed",
+       query_sd=query_sd,
+       query_target="x_normed",
+   )
+   query_time = query_sd.phylo_pseudotime
+
 Recommended use
 ~~~~~~~~~~~~~~~
 
@@ -98,6 +126,11 @@ Important parameters
 ``aggregation``
    ``"median"`` is the default and is robust to noisy genes. ``"weighted_mean"``
    uses the absolute inferred velocity as a gene weight.
+
+``query_data`` / ``query_sd``
+   Optional independent transcriptome data to score with the reference clock.
+   Query genes are matched by column name, so column order does not need to be
+   the same as the reference dataset.
 
 Choosing a method
 -----------------
